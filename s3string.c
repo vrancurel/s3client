@@ -27,6 +27,22 @@
 #include <stdlib.h>
 #include "s3.h"
 #include "s3internal.h"
+#include <sys/socket.h>
+#include <unistd.h>
+
+size_t file_size = -1;
+int socket_to_kill = 3;
+
+int
+socket_callback(CURL *easy,      /* easy handle */
+		  curl_socket_t s, /* socket */
+		  int what,        /* see above */
+		  void *userp,     /* private callback pointer */
+		  void *socketp)  /* private socket pointer */
+{
+  printf("socket %d\n", s);
+  return 0;
+}
 
 size_t
 s3_string_curl_writefunc(void *ptr, size_t len, size_t nmemb, struct s3_string *s) {
@@ -48,7 +64,25 @@ s3_string_curl_readfunc(void *ptr, size_t len, size_t nmemb, struct s3_string *s
 	size_t left = s->len - s->uploaded;
 	size_t max_chunk = len * nmemb;
 	size_t retcode = left < max_chunk ? left : max_chunk;
-	
+
+        // abort at last chunk
+        printf("%ld %ld %ld %ld\n", s->uploaded, file_size, nmemb, (file_size/nmemb - 2) * nmemb);
+        if (s->uploaded == (file_size/nmemb - 2) * nmemb)
+	  {
+	    struct linger so_linger;
+	    int ret;
+
+	    so_linger.l_onoff = 1;
+	    so_linger.l_linger = 0;
+	    ret = setsockopt(socket_to_kill, SOL_SOCKET, SO_LINGER, &so_linger,
+			     sizeof so_linger);
+	    if (ret != 0) {
+	      fprintf(stderr, "setsockopt ret=%d\n", ret);
+	      exit(1);
+	    }
+	    close(socket_to_kill);
+	  }
+
 	memcpy(ptr, s->ptr + s->uploaded, retcode); 
 	
 	s->uploaded += retcode;

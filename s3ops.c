@@ -143,6 +143,71 @@ s3_perform_op(struct S3 *s3, const char *method, const char *url, const char *si
 	free(digest);	
 }
 
+/* Add return values later */
+void
+s3_data_perform_op(struct S3 *s3, const char *method, const char *url, struct s3_string *out, struct s3_string *in, const char *content_type) {
+	char *hdr;
+	
+	CURL *curl = NULL;
+	struct curl_slist *headers = NULL;
+
+
+
+	curl = curl_easy_init();
+	
+	hdr = malloc(1024);
+
+	if (strcmp(method, "DELETE") == 0) {
+		curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method);
+	} else if (strcmp(method, "PUT") == 0) {
+		if (content_type) {
+			snprintf(hdr, 1023, "Content-Type: %s", content_type);
+			headers = curl_slist_append(headers, hdr);
+		}
+		
+		curl_easy_setopt(curl, CURLOPT_READFUNCTION, s3_string_curl_readfunc);
+		curl_easy_setopt(curl, CURLOPT_READDATA, in);
+		curl_easy_setopt(curl, CURLOPT_INFILESIZE, in->len);
+		curl_easy_setopt(curl, CURLOPT_UPLOAD, 1);
+	}
+
+	headers = curl_slist_append(headers, "Expect:");
+
+	snprintf(hdr, 1023, "x-scal-request-uids: 42");
+	headers = curl_slist_append(headers, hdr);
+
+	/* enable TCP keep-alive for this transfer */
+	curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+ 
+	/* keep-alive idle time to 120 seconds */
+	curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 120L);
+ 
+	/* interval time between keep-alive probes: 60 seconds */
+	curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 60L);
+	
+#ifdef DEBUG
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
+	curl_easy_setopt(curl, CURLOPT_HEADER, 1);
+#endif
+
+	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
+
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, s3_string_curl_writefunc);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, out);
+
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+
+	if (s3->proxy) {
+		curl_easy_setopt(curl, CURLOPT_PROXY, s3->proxy);
+	}
+
+	curl_easy_perform(curl);
+
+	curl_easy_cleanup(curl);
+	curl_slist_free_all(headers);
+}
 
 void
 s3_get(struct S3 *s3, const char *bucket, const char *key, struct s3_string *out) {
@@ -219,4 +284,26 @@ s3_put(struct S3 *s3, const char *bucket, const char *key, const char *content_t
 	free(md5);
 	free(date);
 	free(sign_data);
+}
+
+void
+s3_data_put(struct S3 *s3, const char *host, const char *content_type, const char *data, size_t len) {
+	const char *method = "PUT";
+	char *url;
+	struct s3_string *in, *out;
+
+	in = s3_string_init();
+	out = s3_string_init();
+
+	in->ptr = realloc(in->ptr, len + 1);
+	memcpy(in->ptr, data, len);
+	in->len = len;
+
+	asprintf(&url, "http://%s:9991/DataFile/", host);
+
+	s3_data_perform_op(s3, method, url, out, in, content_type);
+	s3_string_free(in);
+	s3_string_free(out);
+
+	free(url);
 }

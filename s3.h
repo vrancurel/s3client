@@ -31,6 +31,7 @@
 
 #include <string.h>
 #include <sys/queue.h>
+#include <curl/curl.h>
 #include "s3xml.h"
 
 #define S3_SECRET_LENGTH 128
@@ -64,6 +65,11 @@ struct S3 * s3_init(const char *id, const char *secret, const char *base_url);
 void s3_free(struct S3 *s3);
 
 struct s3_string * s3_string_init(void);
+int socket_callback(CURL *easy,      /* easy handle */
+                    curl_socket_t s, /* socket */
+                    int what,        /* see above */
+                    void *userp,     /* private callback pointer */
+                    void *socketp);  /* private socket pointer */
 size_t s3_string_curl_writefunc(void *ptr, size_t len, size_t nmemb, struct s3_string *s);
 size_t s3_string_curl_readfunc(void *ptr, size_t len, size_t nmemb, struct s3_string *s);
 void s3_string_free(struct s3_string *str);
@@ -74,6 +80,7 @@ char * s3_md5_sum(const char *content, size_t len);
 void s3_get(struct S3 *s3, const char *bucket, const char *key, struct s3_string *out);
 void s3_delete(struct S3 *s3, const char *bucket, const char *key);
 void s3_put(struct S3 *s3, const char *bucket, const char *key, const char *content_type, const char *data, size_t len);
+void s3_data_put(struct S3 *s3, const char *host, const char *content_type, const char *data, size_t len);
 
 void s3_bucket_entry_free(struct s3_bucket_entry *entry);
 void s3_bucket_entries_free(struct s3_bucket_entry_head *entries);
